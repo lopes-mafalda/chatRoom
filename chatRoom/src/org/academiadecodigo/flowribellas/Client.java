@@ -6,27 +6,58 @@ import java.net.Socket;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
+//Client that connects to the Server
 public class Client {
-    private final Socket clientSocket = new Socket("192.168.2.228",8000);
-    private final BufferedReader inSystem = new BufferedReader(new InputStreamReader(System.in));
+
+    //server port used for the client to connect - change if an error of connection occurs
+    //if you change in the server, you also have to change it here!!
+    private final int SERVER_PORT = 8080;
+    //server's ip address - change to your server's ip address to test
+    private final String HOST = "192.168.2.228";
+    //client's socket used to make the connection
+    private final Socket clientSocket = new Socket(HOST, SERVER_PORT);
+    //client's name
     private final String clientName;
-    private final Color textColor;
-    private final ExecutorService sendPool = Executors.newSingleThreadExecutor();
-    private final ExecutorService receivePool = Executors.newSingleThreadExecutor();
+    //client's chosen color
+    private final Color clientColor;
 
 
+    /**
+     * Client's constructor - used to map the client's name and chosen color and to submit both the thread pools
+     * @throws IOException
+     */
     public Client() throws IOException {
+
+        BufferedReader reader = new BufferedReader(new InputStreamReader(System.in));
         System.out.println("userName? ");
-        this.clientName = inSystem.readLine();
+        this.clientName = reader.readLine();
 
         System.out.println("color? ");
-        this.textColor = getColorFromName(inSystem.readLine());
+        this.clientColor = getColorFromName(reader.readLine());
 
-        this.sendPool.submit(new Send(inSystem,new PrintWriter(clientSocket.getOutputStream(), true) ));
-        this.receivePool.submit(new Receive(new BufferedReader(new InputStreamReader(clientSocket.getInputStream()))));
+        poolStart(reader);
     }
 
+    /**
+     * Method to start both necessary pools - to send and to receive so they can be both done concurrently
+     * @param reader - reader of the input of the client
+     * @throws IOException
+     */
+    private void poolStart(BufferedReader reader) throws IOException {
 
+        ExecutorService sendPool = Executors.newSingleThreadExecutor();
+        ExecutorService receivePool = Executors.newSingleThreadExecutor();
+
+        sendPool.submit(new Send(reader, new PrintWriter(clientSocket.getOutputStream(), true) ));
+        receivePool.submit(new Receive(new BufferedReader(new InputStreamReader(clientSocket.getInputStream()))));
+
+    }
+
+    /**
+     * method to discover transform String into Color
+     * @param colorName - color input
+     * @return - the corresponding color, if there is one or the default
+     */
     private Color getColorFromName(String colorName) {
         switch (colorName.toUpperCase()) {
             case "BLACK":
@@ -50,32 +81,67 @@ public class Client {
         }
     }
 
-
-
+    //Nested class that represents the thread pool that sends messages
     private class Send implements Runnable {
 
-        private final BufferedReader inSystem;
-        private final PrintWriter outServer;
+        //input
+        private final BufferedReader reader;
+        //output
+        private final PrintWriter writer;
+        //constant used in the color selection
+        private final String START_COLOR = "\u001B[38;2;";
+        //constant used in the color selection
+        private final String RESET_COLOR = "\u001B[0m";
 
-        public Send(BufferedReader inSystem, PrintWriter outServer) {
-            this.inSystem = inSystem;
-            this.outServer = outServer;
+        /**
+         * Send's constructor - used to set both the reader and the writer
+         * @param reader
+         * @param writer
+         */
+        private Send(BufferedReader reader, PrintWriter writer) {
+            this.reader = reader;
+            this.writer = writer;
         }
 
+        /**
+         * used to transform the Color into code the terminal understands
+         * @return the string of corresponding color
+         */
+        private String mapColor() {
+            StringBuilder builder = new StringBuilder();
+            builder.append(START_COLOR)
+                    .append(clientColor.getRed())
+                    .append(";")
+                    .append(clientColor.getGreen())
+                    .append(";")
+                    .append(clientColor.getBlue())
+                    .append("m");
+            return builder.toString();
+        }
+
+        /**
+         * method used to send messages with all the relevant information
+         */
         @Override
         public void run() {
 
             while (true) {
                 try {
-                    String line = inSystem.readLine();
+                    String line = reader.readLine(); //reads line by line what the client writes
 
-                    String message = clientName + ": " + line;
+                    StringBuilder builder = new StringBuilder();
 
-                    String colorCode = "\u001B[38;2;" + textColor.getRed() + ";" + textColor.getGreen() + ";" + textColor.getBlue() + "m";
-                    outServer.println(colorCode + message + "\u001B[0m"); // Reset color after the message
+                    builder.append(mapColor()) //add color
+                            .append(clientName) //add name
+                            .append(": ") //separation
+                            .append(line) //message
+                            .append(RESET_COLOR); //resets color
+
+                    String message = builder.toString();
+                    writer.println(message); //output of the message
 
                 } catch (IOException e) {
-                    System.out.println("error sending");
+                    System.out.println(e.getMessage());
                 }
             }
         }
@@ -85,31 +151,43 @@ public class Client {
         }
     }
 
+    //Nested class that represents the thread pool that receives messages
     private class Receive implements Runnable {
 
-        private final BufferedReader inServer;
-        public Receive(BufferedReader inServer) {
-            this.inServer = inServer;
+        //input
+        private final BufferedReader reader;
+
+        /**
+         * Receive's constructor
+         * @param reader - reader used in the reading of the output of the server
+         */
+        public Receive(BufferedReader reader) {
+            this.reader = reader;
         }
 
+        /**
+         * method used to receive messages
+         */
         @Override
         public void run() {
 
             while (true) {
 
                 try {
-                    String line = inServer.readLine();
+                    String line = reader.readLine();
 
-                    if (!line.equals(null)) {
-                        System.out.println(line); //print it to my console
-                    } else {
-                        inServer.close();
+                    //used to close all connections if server closes
+                    if (line == null) {
+                        this.reader.close();
+                        clientSocket.close();
+                        System.exit(0);
+                        return;
                     }
+                    System.out.println(line); //print the message
 
                 } catch (IOException e) {
-                    System.out.println("receiving");
+                    System.out.println(e.getMessage());
                 }
-
             }
         }
     }
@@ -117,9 +195,9 @@ public class Client {
 
     public static void main(String[] args) {
 
-        Client client = null;
         try {
-            client = new Client();
+            Client client = new Client();
+
         } catch (IOException e) {
             System.out.println("error creating client: " + e.getMessage());
         }
