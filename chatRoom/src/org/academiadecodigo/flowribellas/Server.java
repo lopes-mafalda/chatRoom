@@ -11,7 +11,7 @@ public class Server {
 
     //server port used for the client to connect - change if an error of connection occurs
     //if you change in the client, you also have to change it here!!
-    public static final int SERVER_PORT = 8080;
+    public static final int SERVER_PORT = 8090;
     //mimics a client inside the server
     private Vector<Worker> workerList;
     //used to connect to our clients
@@ -42,10 +42,11 @@ public class Server {
      */
     public void connect() throws IOException {
 
+        boolean check = true;
         ExecutorService workerPool = Executors.newCachedThreadPool();
 
         //adding and counting new workers
-        while (serverSocket.isBound()) {
+        while (check) {
 
             Socket workerSocket = this.serverSocket.accept();
 
@@ -57,6 +58,7 @@ public class Server {
 
             System.out.println("added new person to chat");
 
+            check = serverSocket.isBound();
         }
 
     }

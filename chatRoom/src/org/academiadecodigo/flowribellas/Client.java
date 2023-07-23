@@ -3,6 +3,8 @@ package org.academiadecodigo.flowribellas;
 import java.awt.*;
 import java.io.*;
 import java.net.Socket;
+import java.util.HashSet;
+import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -11,7 +13,7 @@ public class Client {
 
     //server port used for the client to connect - change if an error of connection occurs
     //if you change in the server, you also have to change it here!!
-    private final int SERVER_PORT = 8080;
+    private final int SERVER_PORT = 8090;
     //server's ip address - change to your server's ip address to test
     private final String HOST = "192.168.2.228";
     //client's socket used to make the connection
@@ -125,10 +127,27 @@ public class Client {
         @Override
         public void run() {
 
-            while (true) {
+            boolean check = false;
+            while (!check) {
                 try {
                     String line = reader.readLine(); //reads line by line what the client writes
 
+                    if (line.equals("")) { //invalid message format
+                        System.out.println("that is not a valid message! You need to send something");
+                        continue;
+                    }
+
+                    if (line.equals(null) || line == null) { //check for disconnection issues
+                        quit(check, "Warning! Client did not disconnect correctly...", 0);
+                        break;
+                    }
+
+                    if (line.equals("/quit")) { //quitting the chat
+                        quit(check, "-- quitting --", 0);
+                        break;
+                    }
+
+                    //sending the message
                     StringBuilder builder = new StringBuilder();
 
                     builder.append(mapColor()) //add color
@@ -146,9 +165,25 @@ public class Client {
             }
         }
 
-        private boolean isQuiting(String line) {
-            return line.equals("/quit") ? true : false;
+        /**
+         * method used to encapsulate the quitting logic
+         * @param check
+         * @param warningMessage
+         * @param status
+         * @throws IOException
+         */
+        private void quit(boolean check, String warningMessage, int status) throws IOException {
+
+            String quittingMessage = clientName + " has left the chat";
+            this.writer.println(quittingMessage);
+            System.exit(status);
+            System.out.println(warningMessage);
+            this.reader.close();
+            this.writer.close();
+            clientSocket.close();
+            check = true;
         }
+
     }
 
     //Nested class that represents the thread pool that receives messages
@@ -171,24 +206,33 @@ public class Client {
         @Override
         public void run() {
 
-            while (true) {
+            boolean check = false;
+
+            while (!check) {
 
                 try {
                     String line = reader.readLine();
 
                     //used to close all connections if server closes
-                    if (line == null) {
-                        this.reader.close();
-                        clientSocket.close();
-                        System.exit(0);
+                    if (line == null || line.equals(null)) {
+                        quit(check, "-- error in the system - shutting down --", 0);
                         return;
                     }
+
                     System.out.println(line); //print the message
 
                 } catch (IOException e) {
                     System.out.println(e.getMessage());
                 }
             }
+        }
+
+        private void quit(boolean check, String warningMessage, int status) throws IOException {
+            System.out.println(warningMessage);
+            this.reader.close();
+            clientSocket.close();
+            System.exit(status);
+            check = true;
         }
     }
 
